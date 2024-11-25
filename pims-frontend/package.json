@@ -1,0 +1,27 @@
+{
+  "name": "pims-frontend",
+  "private": true,
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "dev:biz": "turbo dev --filter=./apps/biz",
+    "dev:admin": "turbo dev --filter=./apps/admin",
+    "dev:docs": "turbo dev --filter=./apps/docs",
+    "dev:ui": "turbo dev --filter=./apps/storybook",
+    "lint": "turbo lint",
+    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "start": "turbo start"
+  },
+  "devDependencies": {
+    "@pims-frontend/config-eslint": "workspace:*",
+    "@pims-frontend/config-typescript": "workspace:*",
+    "prettier": "^3.3.3",
+    "rimraf": "^6.0.1",
+    "turbo": "^2.2.3",
+    "typescript": "^5.6.3"
+  },
+  "packageManager": "pnpm@9.6.0",
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,55 @@
+trigger:
+  branches:
+    include:
+      - develop
+
+pool:
+  name: 'self-hosted-pool'
+
+steps:
+  - checkout: self
+    displayName: 'Checkout code'
+
+  - script: |
+      echo "Checking Docker version"
+      /usr/bin/docker version
+    displayName: 'Check Docker version'
+
+  - task: Docker@2
+    inputs:
+      containerRegistry: 'dev-front-adm-aks-connection'
+      repository: 'pims-frontend/apps/biz'
+      command: 'buildAndPush'
+      Dockerfile: 'apps/biz/Dockerfile'
+      buildContext: '$(Build.SourcesDirectory)'  # 전체 소스 디렉토리 설정
+      tags: |
+        $(Build.BuildId)
+    displayName: 'Build and Push Docker image to ACR'
+
+  - script: |
+      echo "Listing files in the manifests directory:"
+      ls -R $(Build.SourcesDirectory)/manifests
+    displayName: 'List files in manifests directory'
+
+  - task: KubernetesManifest@1
+    displayName: 'Create imagePullSecret'
+    inputs:
+      action: 'createSecret'
+      connectionType: 'kubernetesServiceConnection'
+      kubernetesServiceEndpoint: 'skcc-newpims-dev-aks-pims'  # Kubernetes 서비스 연결 이름
+      namespace: 'pims'
+      secretType: 'dockerRegistry'
+      secretName: 'image-pull-secret'
+      dockerRegistryEndpoint: 'dev-front-adm-aks-connection'
+
+  - task: KubernetesManifest@1
+    displayName: 'Deploy to Kubernetes cluster'
+    inputs:
+      action: 'deploy'
+      connectionType: 'kubernetesServiceConnection'
+      kubernetesServiceEndpoint: 'skcc-newpims-dev-aks-pims'
+      namespace: 'pims'
+      manifests: |
+        $(Build.SourcesDirectory)/manifests/biz-deployment.yaml
+      containers: 'npimsdevacr.azurecr.io/pims-frontend/apps/biz:$(Build.BuildId)'
+      imagePullSecrets: 'image-pull-secret'

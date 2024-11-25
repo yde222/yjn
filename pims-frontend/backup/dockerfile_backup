@@ -1,0 +1,86 @@
+# 1. 베이스 이미지 설정
+FROM node:20-alpine AS base
+WORKDIR /app
+
+# 필요한 패키지 설치
+RUN apk add --no-cache libc6-compat
+
+# corepack을 설치하고, pnpm을 활성화
+RUN corepack enable pnpm
+
+# pnpm의 위치를 확인하여 설치 확인
+RUN corepack prepare pnpm@latest --activate
+RUN which pnpm && pnpm --version
+
+# 2. 빌드 의존성 단계
+FROM base AS deps
+WORKDIR /app
+
+# 앱의 루트 디렉토리로부터 파일을 복사
+COPY package.json ./
+COPY pnpm-lock.yaml ./
+COPY pnpm-workspace.yaml ./
+COPY tsconfig.json ./
+COPY turbo.json ./
+
+# 앱의 실제 소스 파일 복사
+COPY apps/admin ./apps/admin
+# 앱의 Dependency 파일 복사
+COPY packages ./packages
+COPY shared/apis ./shared/apis
+
+# pnpm을 사용하여 의존성 설치
+RUN pnpm install --workspace-root --frozen-lockfile
+RUN pnpm install --frozen-lockfile --filter=./packages/ui... --filter="./packages/config-*"
+RUN pnpm install --frozen-lockfile --filter=./apps/admin...
+
+# CSS 관련 패키지를 apps/admin에 설치
+WORKDIR /app/apps/admin
+RUN pnpm config set ignore-workspace-root-check true && \
+    pnpm add -D postcss postcss-loader css-loader autoprefixer --workspace-root
+
+# 3. 빌드 단계
+FROM deps AS builder
+WORKDIR /app
+
+ENV TURBO_TELEMETRY_DISABLE=1
+ENV DO_NOT_TRACK=1
+
+# 환경 변수 설정 (빌드 시 사용)
+ENV NEXT_PUBLIC_API_URL=https://pims-skcc.com/admin
+
+# 앱을 빌드
+RUN pnpm build --filter=./apps/admin
+
+# 4. 런타임 단계
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+# 런타임에 필요한 그룹과 유저 추가
+RUN addgroup --system --gid 1001 nodejs \
+    && adduser --system --uid 1001 nextjs
+
+# node_modules와 빌드 결과물을 복사
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=builder /app/apps/admin/public ./apps/admin/public
+
+# 빌드 결과물 복사
+COPY --from=builder /app/apps/admin/.next/standalone ./
+COPY --from=builder /app/apps/admin/.next/static ./apps/admin/.next/static
+COPY --from=builder /app/apps/admin/public ./apps/admin/public
+
+# 권한 설정
+RUN mkdir .next && chown -R nextjs:nodejs .next
+USER nextjs
+
+# 포트 노출
+EXPOSE 3000
+
+# 환경 변수 설정 (런타임 사용)
+ENV NODE_ENV=production
+ENV TURBO_TELEMETRY_DISABLE=1
+ENV DO_NOT_TRACK=1
+ENV NEXT_PUBLIC_API_URL=https://pims-skcc.com/admin
+
+# 앱 실행
+CMD ["node", "./apps/admin/server.js"]

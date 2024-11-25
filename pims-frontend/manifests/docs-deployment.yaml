@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: "storybook-app"
+  name: "storybook-app"
+  namespace: pims
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "storybook-app"
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: "storybook-app"
+    spec:
+      containers:
+        - image: npimsdevacr.azurecr.io/pims-frontend/apps/docs:$(Build.BuildId)
+          imagePullPolicy: IfNotPresent
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /
+              port: 6006
+              scheme: HTTP
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 10
+            initialDelaySeconds: 60
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /
+              port: 6006
+              scheme: HTTP
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 10
+            initialDelaySeconds: 30
+          name: "storybook-app"
+          env:
+            - name: "STORYBOOK_ENVIRONMENT"
+              value: "PROD"
+          ports:
+            - containerPort: 6006
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1G
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: "storybook-app"
+  name: "storybook-app"
+  namespace: pims
+spec:
+  ports:
+    - port: 80
+      protocol: TCP
+      targetPort: 6006
+  selector:
+    app: "storybook-app"
+  sessionAffinity: None
+  type: LoadBalancer

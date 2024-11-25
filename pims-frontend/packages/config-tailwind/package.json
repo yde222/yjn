@@ -1,0 +1,18 @@
+{
+  "name": "@pims-frontend/config-tailwind",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {},
+  "files": [
+    "postcss.config.js",
+    "tailwind.config.js"
+  ],
+  "dependencies": {
+    "tailwindcss": "^3.4.7",
+    "tailwindcss-animate": "^1.0.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/typography": "^0.5.14",
+    "@types/node": "^22.0.0"
+  }
+}

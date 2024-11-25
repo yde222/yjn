@@ -1,0 +1,75 @@
+trigger:
+  branches:
+    include:
+      - develop
+
+pool:
+  name: 'self-hosted-pool'
+
+steps:
+  - checkout: self
+    displayName: 'Checkout code'
+
+  - task: UseDotNet@2
+    inputs:
+      packageType: 'sdk'
+      version: '7.x'
+    displayName: 'Install .NET SDK (if needed)'
+
+  - script: |
+      echo "Checking Docker version"
+      DOCKER_BUILDKIT=1 /usr/bin/docker version
+    displayName: 'Check Docker version'
+
+  - task: Docker@2
+    inputs:
+      containerRegistry: 'dev-front-adm-aks-connection'
+      repository: 'pims-frontend/apps/admin'
+      command: 'buildAndPush'
+      Dockerfile: 'apps/admin/Dockerfile'
+      buildContext: '$(Build.SourcesDirectory)'  # 전체 소스 디렉토리
+      tags: |
+        $(Build.BuildId)
+    displayName: 'Build and Push Docker image to ACR'
+
+  - task: CacheBeta@1
+    inputs:
+      key: 'pnpm-cache | "$(Agent.OS)" | package.json | pnpm-lock.yaml'
+      path: ~/.pnpm-store
+      cacheHitVar: CACHE_RESTORED
+    displayName: 'Cache pnpm store'
+
+  - script: |
+      if [ "$(CACHE_RESTORED)" != "true" ]; then
+        echo "Installing dependencies..."
+        pnpm install --workspace-root --frozen-lockfile
+      fi
+    displayName: 'Install Dependencies with Cache'
+
+  - script: |
+      echo "Listing files in the manifests directory:"
+      ls -R $(Build.SourcesDirectory)/manifests
+    displayName: 'List files in manifests directory'
+
+  - task: KubernetesManifest@1
+    displayName: 'Create imagePullSecret'
+    inputs:
+      action: 'createSecret'
+      connectionType: 'kubernetesServiceConnection'
+      kubernetesServiceEndpoint: 'skcc-newpims-dev-aks-pims'
+      namespace: 'pims'
+      secretType: 'dockerRegistry'
+      secretName: 'image-pull-secret'
+      dockerRegistryEndpoint: 'dev-front-adm-aks-connection'
+
+  - task: KubernetesManifest@1
+    displayName: 'Deploy to Kubernetes cluster'
+    inputs:
+      action: 'deploy'
+      connectionType: 'kubernetesServiceConnection'
+      kubernetesServiceEndpoint: 'skcc-newpims-dev-aks-pims'
+      namespace: 'pims'
+      manifests: |
+        $(Build.SourcesDirectory)/manifests/admin-deployment.yaml
+      containers: 'npimsdevacr.azurecr.io/pims-frontend/apps/admin:$(Build.BuildId)'
+      imagePullSecrets: 'image-pull-secret'
